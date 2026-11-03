@@ -250,6 +250,11 @@ public final class MarketState extends SavedData {
         if (!stockEnabled() || entry.unlimitedStock() || state == null) {
             return true;
         }
+        if (state.stock < 0) {
+            // OP 用 /market stock <id> -1 设成「不限」：负库存是哨兵值，不能拿去和 units 比较，
+            // 否则 units > -1 恒成立 → 该商品从此永远提示「无库存」。
+            return true;
+        }
         if (units > state.stock) {
             return false;
         }
@@ -287,7 +292,9 @@ public final class MarketState extends SavedData {
             return;
         }
         int value = clampStock(stock);
-        state.stock = value < 0 ? -1 : Math.min(value, state.max < 0 ? value : Math.max(value, 0));
+        // 原式 Math.min(value, state.max < 0 ? value : Math.max(value, 0)) 两个分支都等于 value，
+        // 想「夹到补货基准」的意图从未生效；这里显式分开「-1 = 不限」与「夹到 max」。
+        state.stock = value < 0 ? -1 : (state.max < 0 ? value : Math.min(value, state.max));
         setDirty();
     }
 

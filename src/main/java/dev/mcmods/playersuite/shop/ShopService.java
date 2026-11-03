@@ -1,6 +1,7 @@
 package dev.mcmods.playersuite.shop;
 
 import dev.mcmods.playersuite.PlayerSuiteMod;
+import dev.mcmods.playersuite.bank.BankService;
 import dev.mcmods.playersuite.config.SuiteConfig;
 import dev.mcmods.playersuite.economy.Economy;
 import dev.mcmods.playersuite.ui.FeatureOpeners;
@@ -443,8 +444,10 @@ public final class ShopService {
             entry.stock = newCount;
             cat.touch(entry);
         }
-        // 税费与入账
-        long tax = Math.floorDiv(gross * (long) (SuiteConfig.shopTaxPercent() * 100.0), 10000L);
+        // 税费与入账：统一用整数万分比（bps），避免 (long)(0.29 * 100.0) 被截断成 28 而少收税，
+        // 也保证与银行 percentFloor/percentCeil 的百分比语义一致。
+        long taxBps = Math.max(0L, Math.min(10_000L, Math.round(SuiteConfig.shopTaxPercent() * 100.0D)));
+        long tax = BankService.percentFloor(gross, taxBps);
         tax = Mth.clamp(tax, 0L, gross);
         long net = gross - tax;
         if (seller != null && !seller.isRemoved()) {

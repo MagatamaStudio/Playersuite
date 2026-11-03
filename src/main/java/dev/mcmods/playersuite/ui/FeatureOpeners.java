@@ -96,6 +96,39 @@ public final class FeatureOpeners {
         }
     }
 
+    /**
+     * 以 {@code viewer} 身份打开 {@code target} 的功能页面（OP 代开他人页面）。
+     *
+     * <p>{@code /ps <功能> <玩家>} 原来调的是 {@code open(viewer, key, page)}，target 被直接丢弃：
+     * 命令返回成功，实际打开的却是查看者自己的页面。这里把 target 真正透传给各功能已有的
+     * {@code open(viewer, target, page)} 重载。
+     */
+    public static void open(ServerPlayer viewer, ServerPlayer target, String key, int page) {
+        if (viewer == null || key == null) {
+            return;
+        }
+        if (!isKnown(key)) {
+            viewer.displayClientMessage(Component.translatable("playersuite.ui.unknownFeature", key), false);
+            return;
+        }
+        if (!enabled(key)) {
+            viewer.displayClientMessage(Component.translatable("playersuite.ui.featureDisabled", key), false);
+            return;
+        }
+        ServerPlayer effective = target == null || target.isRemoved() ? viewer : target;
+        switch (key) {
+            case HUB -> HubMenu.open(viewer);
+            case WAREHOUSE -> WarehouseService.open(viewer, effective, page);
+            case MAIL -> MailService.open(viewer, effective, page);
+            case BANK -> BankService.open(viewer, effective, page);
+            case SHOP -> ShopService.open(viewer, effective, page);
+            case MARKET -> MarketService.open(viewer, effective, page);
+            case TITLE -> TitleService.open(viewer, effective, page);
+            case CHECKIN -> CheckinService.open(viewer, effective, page);
+            default -> viewer.displayClientMessage(Component.translatable("playersuite.ui.unknownFeature", key), false);
+        }
+    }
+
     /** 可点击的「打开功能总入口」文本，用于进服提示与说明。 */
     public static Component hubLink() {
         // withStyle 链必须从 translatable 直接发起（返回 MutableComponent）

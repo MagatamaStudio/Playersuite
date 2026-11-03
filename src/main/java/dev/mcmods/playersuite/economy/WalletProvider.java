@@ -124,17 +124,31 @@ public final class WalletProvider implements CurrencyProvider {
         return of(player).log();
     }
 
-    /** 初始赠送：只在玩家第一次拥有钱包记录时发放。 */
+    /**
+     * 初始赠送：每个玩家（UUID）只发放一次。
+     *
+     * <p>不能用「钱包附件是否存在」判断首次进服：{@link WalletData#isBlank()} 为真时序列化器返回 null，
+     * 玩家把余额花光后重登会被当成首次进服，从而可以无限刷初始资金。
+     */
     public static void grantInitial(ServerPlayer player) {
         long initial = SuiteConfig.initialBalance();
         if (initial <= 0L) {
             return;
         }
-        if (player.getExistingData(WALLET).isEmpty()) {
-            WalletData wallet = new WalletData();
-            wallet.add(initial);
-            wallet.record(initial, Economy.TXN_PREFIX + "initial");
-            player.setData(WALLET, wallet);
+        InitialGrants grants = InitialGrants.of(player.server);
+        java.util.UUID id = player.getUUID();
+        boolean hadWallet = player.getExistingData(WALLET).isPresent();
+        if (hadWallet) {
+            // 升级前就已经有钱包数据的玩家：只补标记，不补发
+            grants.markGranted(id);
+            return;
         }
+        if (!grants.markGranted(id)) {
+            return;                       // 已经发过（例如花光余额后重登）
+        }
+        WalletData wallet = new WalletData();
+        wallet.add(initial);
+        wallet.record(initial, Economy.TXN_PREFIX + "initial");
+        player.setData(WALLET, wallet);
     }
 }

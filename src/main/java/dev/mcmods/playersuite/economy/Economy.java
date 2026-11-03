@@ -126,12 +126,18 @@ public final class Economy {
         return builtinWallet() ? PendingPayouts.of(player.server).count(player.getUUID()) : 0;
     }
 
-    /** 领取全部待领取收入，返回实际领到的数额。 */
+    /** 领取待领取收入（受钱包余额上限约束，未领完的部分保留），返回实际领到的数额。 */
     public static long claimPending(ServerPlayer player) {
         if (!builtinWallet()) {
             return 0L;
         }
-        long amount = PendingPayouts.of(player.server).claimAll(player.getUUID());
+        // 先算「还能装下多少」再领：原来先 claimAll 全删、再按 maxBalance 截断入账，
+        // 余额接近上限时差额会被静默销毁（付款方已付出、收款方没到账）。
+        long room = Math.max(0L, SuiteConfig.maxBalance() - balance(player));
+        if (room <= 0L) {
+            return 0L;
+        }
+        long amount = PendingPayouts.of(player.server).claimUpTo(player.getUUID(), room);
         if (amount > 0L) {
             deposit(player, amount, "pending");
         }

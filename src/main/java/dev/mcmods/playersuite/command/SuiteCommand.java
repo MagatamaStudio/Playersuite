@@ -152,8 +152,8 @@ public final class SuiteCommand {
             viewer.displayClientMessage(Component.translatable("playersuite.error.manageOthersDisabled"), false);
             return 0;
         }
-        // 各功能内部自行判断 target 数据：这里统一以查看者身份打开，管理他人通过页面内的管理按钮切换
-        FeatureOpeners.open(viewer, feature, 0);
+        // target 必须真正透传下去，否则命令返回成功却只打开查看者自己的页面
+        FeatureOpeners.open(viewer, target, feature, 0);
         return 1;
     }
 

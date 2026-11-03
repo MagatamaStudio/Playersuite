@@ -27,6 +27,9 @@ public final class PendingPayouts extends SavedData {
     private static final String TAG_REASON = "Reason";
     private static final String TAG_TIME = "Time";
 
+    /** 单个 owner 最多保留多少条待领取记录（超出后并入最后一条，防无界增长）。 */
+    private static final int MAX_ENTRIES_PER_OWNER = 64;
+
     public static final SavedData.Factory<PendingPayouts> FACTORY =
             new SavedData.Factory<>(PendingPayouts::new, PendingPayouts::load);
 
@@ -76,13 +79,51 @@ public final class PendingPayouts extends SavedData {
         return server.overworld().getDataStorage().computeIfAbsent(FACTORY, NAME);
     }
 
-    /** 记一笔待领取。 */
+    /** 记一笔待领取（同一 owner 超过 {@link #MAX_ENTRIES_PER_OWNER} 条后并入最后一条）。 */
     public void add(UUID owner, long amount, String reason) {
         if (amount <= 0L || owner == null) {
             return;
         }
-        entries.computeIfAbsent(owner, k -> new ArrayList<>()).add(new Entry(amount, reason, System.currentTimeMillis()));
+        List<Entry> list = entries.computeIfAbsent(owner, k -> new ArrayList<>());
+        if (list.size() >= MAX_ENTRIES_PER_OWNER) {
+            // 离线店主每成交一笔都会调到这里；不封顶的话长期不登录的玩家会累积上万条，
+            // total()/count() 线性求和、save() 全表序列化，内存与存档都会膨胀。
+            Entry last = list.get(list.size() - 1);
+            list.set(list.size() - 1,
+                    new Entry(last.amount() + amount, last.reason(), System.currentTimeMillis()));
+        } else {
+            list.add(new Entry(amount, reason, System.currentTimeMillis()));
+        }
         setDirty();
+    }
+
+    /**
+     * 领取至多 {@code max} 金币，返回实际领取额；未领完的部分保留（供钱包余额上限场景使用）。
+     */
+    public long claimUpTo(UUID owner, long max) {
+        if (max <= 0L) {
+            return 0L;
+        }
+        List<Entry> list = entries.get(owner);
+        if (list == null || list.isEmpty()) {
+            return 0L;
+        }
+        long claimed = 0L;
+        while (!list.isEmpty() && claimed < max) {
+            Entry first = list.get(0);
+            long take = Math.min(first.amount(), max - claimed);
+            claimed += take;
+            if (take >= first.amount()) {
+                list.remove(0);
+            } else {
+                list.set(0, new Entry(first.amount() - take, first.reason(), first.time()));
+            }
+        }
+        if (list.isEmpty()) {
+            entries.remove(owner);
+        }
+        setDirty();
+        return claimed;
     }
 
     /** 某人当前待领取总额。 */
